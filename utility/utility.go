@@ -1,6 +1,12 @@
 package utility
 
-import "strconv"
+import (
+	"encoding/json"
+	"net/http"
+	"strconv"
+
+	"github.com/AnnaCarter465/crypto-alert/model"
+)
 
 func CalRsi(data [][6]string) float64 {
 	totalGain := 0.0
@@ -25,4 +31,12 @@ func CalRsi(data [][6]string) float64 {
 	rs := (totalGain / periods) / (totalLoss / periods)
 	rsi := 100 - (100 / (1 + rs))
 	return rsi
+}
+
+func ThrowInternalServerError(err error, w http.ResponseWriter) {
+	res := model.Response{Status: "error", Msg: err.Error()}
+	errJson, _ := json.Marshal(res)
+
+	w.WriteHeader(http.StatusInternalServerError)
+	w.Write(errJson)
 }

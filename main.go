@@ -2,13 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"sync"
 	"time"
 
+	"github.com/AnnaCarter465/crypto-alert/model"
 	"github.com/AnnaCarter465/crypto-alert/okx"
 	"github.com/AnnaCarter465/crypto-alert/utility"
 	"github.com/gorilla/mux"
@@ -19,31 +19,24 @@ type RsiPerCoinPair struct {
 	Rsi  float64 `json:"rsi"`
 }
 
-type Response struct {
-	Status string `json:"status"`
-	Msg    string `json:"msg"`
-}
-
 func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 
 	listSupportCoin, err := okx.GetListSupportCoin()
 	if err != nil {
-		panic(err)
+		log.Println(err)
+		utility.ThrowInternalServerError(err, w)
+		return
 	}
+
 	coins := listSupportCoin.Data.Contract
 
 	log.Println("all contract coins support:", len(coins), "coins")
 
 	if len(coins) == 0 {
-		res := Response{Status: "success", Msg: "no contract coins support"}
-
-		jsonBytes, err := json.Marshal(res)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Fprintln(w, string(jsonBytes))
+		res := model.Response{Status: "success", Msg: "no contract coins support"}
+		resJson, _ := json.Marshal(res)
+		w.Write(resJson)
 		return
 	}
 
@@ -51,7 +44,12 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 
 	bandwidth := make(chan struct{}, 20)
 
-	var wg sync.WaitGroup
+	var (
+		errMux         sync.Mutex
+		wg             sync.WaitGroup
+		candlestickErr error
+	)
+
 	wg.Add(len(coins))
 
 	// get candlestick by coins and get rsi > 70 ----------------------------------------------------
@@ -66,10 +64,21 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 				<-bandwidth
 			}()
 
+			errMux.Lock()
+			hasError := candlestickErr != nil
+			errMux.Unlock()
+
+			if hasError {
+				return
+			}
+
 			pair := data + "-USDT"
 			dataCandles, err := okx.GetIndexCandleStick(pair, "4H", 14)
 			if err != nil {
-				panic(err)
+				errMux.Lock()
+				candlestickErr = err
+				errMux.Unlock()
+				return
 			}
 
 			rsi := utility.CalRsi(dataCandles.Data)
@@ -84,15 +93,16 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 	wg.Wait()
 	close(bandwidth)
 
+	if candlestickErr != nil {
+		log.Println(candlestickErr)
+		utility.ThrowInternalServerError(candlestickErr, w)
+		return
+	}
+
 	if len(overBuyCoins) == 0 {
-		res := Response{Status: "success", Msg: "no coins rsi > 70"}
-
-		jsonBytes, err := json.Marshal(res)
-		if err != nil {
-			panic(err)
-		}
-
-		fmt.Fprintln(w, string(jsonBytes))
+		res := model.Response{Status: "success", Msg: "no coins rsi > 70"}
+		resJson, _ := json.Marshal(res)
+		w.Write(resJson)
 		return
 	}
 
@@ -114,12 +124,8 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 		finalCoins = append(finalCoins, obj)
 	}
 
-	jsonBytes, err := json.Marshal(finalCoins)
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Fprintln(w, string(jsonBytes))
+	resJson, _ := json.Marshal(finalCoins)
+	w.Write(resJson)
 }
 
 func main() {

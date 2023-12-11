@@ -2,18 +2,25 @@ package okx
 
 import (
 	"encoding/json"
+	"errors"
 	"io"
 	"strconv"
 
 	"github.com/AnnaCarter465/crypto-alert/httprequest"
 )
 
-var domain = "https://www.okx.com"
+var (
+	domain        = "https://www.okx.com"
+	defaultErrMsg = "something wrong with OKX API"
+)
 
 type OkxResponse[T any] struct {
-	Code string `json:"code"`
-	Msg  string `json:"msg"`
-	Data T      `json:"data"`
+	Code         interface{} `json:"code"`
+	Msg          string      `json:"msg"`
+	Data         T           `json:"data"`
+	DetailMsg    string      `json:"detailMsg"`
+	ErrorCode    string      `json:"error_code"`
+	ErrorMessage string      `json:"error_message"`
 }
 
 type TradingEndpoint struct {
@@ -30,6 +37,10 @@ func GetListSupportCoin() (OkxResponse[TradingEndpoint], error) {
 
 	defer res.Body.Close()
 
+	if res.StatusCode != 200 {
+		return OkxResponse[TradingEndpoint]{}, errors.New(defaultErrMsg)
+	}
+
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return OkxResponse[TradingEndpoint]{}, err
@@ -39,6 +50,15 @@ func GetListSupportCoin() (OkxResponse[TradingEndpoint], error) {
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return OkxResponse[TradingEndpoint]{}, err
+	}
+
+	if response.Code != "0" {
+		errMsg := response.ErrorMessage
+		if errMsg == "" {
+			errMsg = defaultErrMsg
+		}
+
+		return OkxResponse[TradingEndpoint]{}, errors.New(errMsg)
 	}
 
 	return response, nil
@@ -52,6 +72,10 @@ func GetIndexCandleStick(pair, bar string, limit int) (OkxResponse[[][6]string],
 
 	defer res.Body.Close()
 
+	if res.StatusCode != 200 {
+		return OkxResponse[[][6]string]{}, errors.New(defaultErrMsg)
+	}
+
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
 		return OkxResponse[[][6]string]{}, err
@@ -61,6 +85,15 @@ func GetIndexCandleStick(pair, bar string, limit int) (OkxResponse[[][6]string],
 	err = json.Unmarshal(body, &response)
 	if err != nil {
 		return OkxResponse[[][6]string]{}, err
+	}
+
+	if response.Code != "0" {
+		errMsg := response.ErrorMessage
+		if errMsg == "" {
+			errMsg = defaultErrMsg
+		}
+
+		return OkxResponse[[][6]string]{}, errors.New(errMsg)
 	}
 
 	return response, nil
