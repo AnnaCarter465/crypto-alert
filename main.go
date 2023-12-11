@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/AnnaCarter465/crypto-alert/okx"
+	"github.com/gorilla/mux"
 )
 
 type RsiPerCoinPair struct {
@@ -49,7 +50,11 @@ func calRsi(data [][6]string) float64 {
 }
 
 func main() {
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+	router := mux.NewRouter()
+
+	subRouter := router.PathPrefix("/api/crypto-alert").Subrouter()
+
+	subRouter.HandleFunc("/contract", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 
 		listSupportCoin, err := okx.GetListSupportCoin()
@@ -58,7 +63,7 @@ func main() {
 		}
 		coins := listSupportCoin.Data.Contract
 
-		log.Println("contract coins support:", len(coins), "coins")
+		log.Println("all contract coins support:", len(coins), "coins")
 
 		if len(coins) == 0 {
 			res := Response{Status: "success", Msg: "no contract coins support"}
@@ -80,6 +85,7 @@ func main() {
 		wg.Add(len(coins))
 
 		// get candlestick by coins and get rsi > 70 ----------------------------------------------------
+		log.Println("---> calculating...")
 		for index, data := range coins {
 			go func(index int, data string) {
 				defer wg.Done()
@@ -98,7 +104,7 @@ func main() {
 
 				rsi := calRsi(dataCandles.Data)
 
-				if rsi > 100 {
+				if rsi > 70 {
 					element := RsiPerCoinPair{Pair: pair, Rsi: rsi}
 					overBuyCoins = append(overBuyCoins, element)
 				}
@@ -119,6 +125,8 @@ func main() {
 			fmt.Fprintln(w, string(jsonBytes))
 			return
 		}
+
+		log.Println("over buy coins:", len(overBuyCoins), "coins")
 
 		// sort by rsi ----------------------------------------------------
 		sort.Slice(overBuyCoins, func(i, j int) bool {
@@ -144,5 +152,5 @@ func main() {
 		fmt.Fprintln(w, string(jsonBytes))
 	})
 
-	http.ListenAndServe(":3000", nil)
+	http.ListenAndServe(":3000", router)
 }
