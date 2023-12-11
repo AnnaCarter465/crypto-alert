@@ -16,29 +16,29 @@ type OkxResponse[T any] struct {
 	Data T      `json:"data"`
 }
 
-type CoinsData struct {
+type TradingEndpoint struct {
 	Contract []string `json:"contract"`
 	Option   []string `json:"option"`
 	Spot     []string `json:"spot"`
 }
 
-func GetListSupportCoin() (OkxResponse[CoinsData], error) {
+func GetListSupportCoin() (OkxResponse[TradingEndpoint], error) {
 	res, err := httprequest.Request("GET", domain+"/api/v5/rubik/stat/trading-data/support-coin")
 	if err != nil {
-		return OkxResponse[CoinsData]{}, err
+		return OkxResponse[TradingEndpoint]{}, err
 	}
 
 	defer res.Body.Close()
 
 	body, err := io.ReadAll(res.Body)
 	if err != nil {
-		return OkxResponse[CoinsData]{}, err
+		return OkxResponse[TradingEndpoint]{}, err
 	}
 
-	var response OkxResponse[CoinsData]
+	var response OkxResponse[TradingEndpoint]
 	err = json.Unmarshal(body, &response)
 	if err != nil {
-		return OkxResponse[CoinsData]{}, err
+		return OkxResponse[TradingEndpoint]{}, err
 	}
 
 	return response, nil
