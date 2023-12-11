@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"sort"
 	"strconv"
@@ -15,6 +16,11 @@ import (
 type RsiPerCoinPair struct {
 	Pair string  `json:"pair"`
 	Rsi  float64 `json:"rsi"`
+}
+
+type Response struct {
+	Status string `json:"status"`
+	Msg    string `json:"msg"`
 }
 
 func calRsi(data [][6]string) float64 {
@@ -44,11 +50,27 @@ func calRsi(data [][6]string) float64 {
 
 func main() {
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+
 		listSupportCoin, err := okx.GetListSupportCoin()
 		if err != nil {
 			panic(err)
 		}
 		coins := listSupportCoin.Data.Contract
+
+		log.Println("contract coins support:", len(coins), "coins")
+
+		if len(coins) == 0 {
+			res := Response{Status: "success", Msg: "no contract coins support"}
+
+			jsonBytes, err := json.Marshal(res)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Fprintln(w, string(jsonBytes))
+			return
+		}
 
 		var overBuyCoins []RsiPerCoinPair
 
@@ -76,7 +98,7 @@ func main() {
 
 				rsi := calRsi(dataCandles.Data)
 
-				if rsi > 70 {
+				if rsi > 100 {
 					element := RsiPerCoinPair{Pair: pair, Rsi: rsi}
 					overBuyCoins = append(overBuyCoins, element)
 				}
@@ -85,6 +107,18 @@ func main() {
 
 		wg.Wait()
 		close(bandwidth)
+
+		if len(overBuyCoins) == 0 {
+			res := Response{Status: "success", Msg: "no coins rsi > 70"}
+
+			jsonBytes, err := json.Marshal(res)
+			if err != nil {
+				panic(err)
+			}
+
+			fmt.Fprintln(w, string(jsonBytes))
+			return
+		}
 
 		// sort by rsi ----------------------------------------------------
 		sort.Slice(overBuyCoins, func(i, j int) bool {
@@ -107,7 +141,6 @@ func main() {
 			panic(err)
 		}
 
-		w.Header().Set("Content-Type", "application/json")
 		fmt.Fprintln(w, string(jsonBytes))
 	})
 
