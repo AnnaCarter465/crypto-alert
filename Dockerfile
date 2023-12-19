@@ -17,4 +17,6 @@ COPY --from=build-stage /docker-crypto-alert /docker-crypto-alert
 
 USER nonroot:nonroot
 
+ENV TZ=Asia/Bangkok
+
 ENTRYPOINT ["/docker-crypto-alert"]

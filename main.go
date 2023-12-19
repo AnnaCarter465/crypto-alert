@@ -1,17 +1,15 @@
 package main
 
 import (
-	"encoding/json"
+	"fmt"
 	"log"
-	"net/http"
 	"sort"
 	"sync"
 	"time"
 
-	"github.com/AnnaCarter465/crypto-alert/model"
+	"github.com/AnnaCarter465/crypto-alert/line"
 	"github.com/AnnaCarter465/crypto-alert/okx"
 	"github.com/AnnaCarter465/crypto-alert/utility"
-	"github.com/gorilla/mux"
 )
 
 type RsiPerCoinPair struct {
@@ -19,14 +17,11 @@ type RsiPerCoinPair struct {
 	Rsi  float64 `json:"rsi"`
 }
 
-func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
-	w.Header().Set("Content-Type", "application/json")
-
+func getOverBuyCoins() string {
 	listSupportCoin, err := okx.GetListSupportCoin()
 	if err != nil {
 		log.Println(err)
-		utility.ThrowInternalServerError(err, w)
-		return
+		return "⚠️ something wrong ⚠️"
 	}
 
 	coins := listSupportCoin.Data.Contract
@@ -34,10 +29,7 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 	log.Println("all contract coins support:", len(coins), "coins")
 
 	if len(coins) == 0 {
-		res := model.Response{Status: "success", Msg: "no contract coins support"}
-		resJson, _ := json.Marshal(res)
-		w.Write(resJson)
-		return
+		return "❌ no contract coins support ❌"
 	}
 
 	var overBuyCoins []RsiPerCoinPair
@@ -95,15 +87,11 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 
 	if candlestickErr != nil {
 		log.Println(candlestickErr)
-		utility.ThrowInternalServerError(candlestickErr, w)
-		return
+		return "⚠️ something wrong ⚠️"
 	}
 
 	if len(overBuyCoins) == 0 {
-		res := model.Response{Status: "success", Msg: "no coins rsi > 70"}
-		resJson, _ := json.Marshal(res)
-		w.Write(resJson)
-		return
+		return "💸 no coins rsi > 70 💸"
 	}
 
 	log.Println("over buy coins:", len(overBuyCoins), "coins")
@@ -124,16 +112,58 @@ func getOverBuyCoins(w http.ResponseWriter, r *http.Request) {
 		finalCoins = append(finalCoins, obj)
 	}
 
-	resJson, _ := json.Marshal(finalCoins)
-	w.Write(resJson)
+	response := "\n💰 RSI over 70 💰"
+
+	for i, v := range finalCoins {
+		response += fmt.Sprintf("\n%d. %s: %f", i+1, v.Pair, v.Rsi)
+	}
+
+	return response
+}
+
+func run() {
+	// Start the loop every 4
+	for {
+		go line.NotiToLine(getOverBuyCoins())
+		time.Sleep(time.Hour * 4)
+	}
 }
 
 func main() {
-	router := mux.NewRouter()
+	now := time.Now()
 
-	subRouter := router.PathPrefix("/api/crypto-alert").Subrouter()
+	hr := now.Hour()
 
-	subRouter.HandleFunc("/contract", getOverBuyCoins)
+	var startHr int
 
-	http.ListenAndServe(":3000", router)
+	if now.Minute() == 0 && now.Second() == 0 {
+		if hr == 7 || hr == 11 || hr == 15 || hr == 19 || hr == 23 || hr == 3 {
+			run()
+			return
+		}
+	}
+
+	if hr > 7 && hr <= 11 {
+		startHr = 11
+	} else if hr > 11 && hr <= 15 {
+		startHr = 15
+	} else if hr > 15 && hr <= 19 {
+		startHr = 19
+	} else if hr > 19 && hr <= 23 {
+		startHr = 23
+	} else if hr > 23 || hr <= 3 {
+		startHr = 3
+	} else if hr > 3 && hr <= 7 {
+		startHr = 7
+	} else {
+		panic("err")
+	}
+
+	startTime := time.Date(now.Year(), now.Month(), now.Day(), startHr, 0, 0, 0, time.Local)
+
+	log.Println("next startTime", startTime)
+
+	time.Sleep(startTime.Sub(now))
+
+	run()
 }

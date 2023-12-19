@@ -2,8 +2,8 @@ version: '3.8'
 
 services:
   crypto-alert:
-    build:
-      context: .
-      dockerfile: Dockerfile
+    build: .
     ports:
       - "8080:8080"
+    environment:
+      - LINE_TOKEN=${LINE_TOKEN}
